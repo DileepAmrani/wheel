@@ -25,6 +25,7 @@ function Wheel({
   const tickSound = useRef<HTMLAudioElement | null>(null);
   const winSound = useRef<HTMLAudioElement | null>(null);
   const [muted, setMuted] = useState(false);
+  const [winningName, setWinningName] = useState<string | null>(null);
 
   // Refs to clear timers safely
   const tickIntervalRef = useRef<number | null>(null);
@@ -35,9 +36,9 @@ function Wheel({
 
   // Initialize audio elements
   useEffect(() => {
-    tickSound.current = new Audio("/spin-tick.wav");
-    winSound.current = new Audio("/win.wav");
-    tickSound.current.volume = 0.3;
+    tickSound.current = new Audio("/spin.mp3");
+    winSound.current = new Audio("/win.mp3");
+    tickSound.current.volume = 0.5;
     winSound.current.volume = 0.5;
 
     return () => {
@@ -125,6 +126,7 @@ function Wheel({
     if (localSpin || items.length === 0) return;
     setLocalSpin(true);
     setShowConfetti(false);
+    setWinningName(null);
 
     // Normalize winner
     const normalizedWinner = forcedWinner?.trim().toLowerCase();
@@ -194,6 +196,8 @@ function Wheel({
         });
       }
       setShowConfetti(true);
+      setWinningName(selected);
+      setTimeout(() => setWinningName(null), 1000);
     }, spinDuration);
   };
 
@@ -278,6 +282,13 @@ function Wheel({
       >
         {muted ? "Unmute" : "Mute"}
       </button>
+
+      {/* Winning name popup */}
+      {/* {winningName && (
+        <div className="absolute bottom-24 bg-amber-400 text-black font-bold text-lg px-4 py-2 rounded-full shadow-lg animate-bounce">
+          🎉 {winningName} 🎉
+        </div>
+      )} */}
     </div>
   );
 }

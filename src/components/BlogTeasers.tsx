@@ -47,7 +47,7 @@ function BlogTeasers() {
     },
     {
       key: "chorus",
-      title: "Chorus Wheel: Practice Parts and Warm-Ups Playfully",
+      title: "Chores Wheel: Practice Parts and Warm-Ups Playfully",
       content: `Label slices by section (soprano, alto, tenor, bass), techniques (breathing, dynamics), and warm-ups. Use the wheel to randomize who leads the next exercise.\n\nRehearsal flow: add "sight-reading" and "blend check" slices. Keep labels short so they stay readable on music stands.\n\nCommunity: share a public "Choir Practice Wheel" to help other directors find quick drills.`,
     },
   ];

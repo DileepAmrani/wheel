@@ -9,7 +9,7 @@ const PRESETS: { key: PresetKey; label: string; emoji: string }[] = [
   { key: "dinner", label: "What’s For Dinner", emoji: "🍽️" },
   { key: "workout", label: "Workout Program", emoji: "🏋️" },
   { key: "team", label: "Team Building Games", emoji: "🤝" },
-  { key: "chorus", label: "Chorus Wheel", emoji: "🎼" },
+  { key: "chorus", label: "Chores Wheel", emoji: "🎼" },
 ];
 
 const PRESET_ITEMS = {
