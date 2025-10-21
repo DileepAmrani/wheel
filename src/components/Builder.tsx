@@ -5,7 +5,7 @@ import ShareModal from "./ShareModal";
 import AuthModal from "./AuthModal";
 import { PRESET_ITEMS, PRESETS, type PresetKey } from "@/constants/presets";
 import { type User } from "firebase/auth";
-import { doc, onSnapshot, collection, addDoc } from "firebase/firestore";
+import { collection, addDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { toast } from "react-hot-toast";
 
@@ -18,21 +18,9 @@ function Builder({
   setShowConfetti: (show: boolean) => void;
   user: User | null;
 }) {
-  const [isPublicProfile, setIsPublicProfile] = useState(false);
   const [nameType, setNameType] = useState<"boys" | "girls" | "unisex">("boys");
   const [currentItems, setCurrentItems] = useState<string>("");
 
-  useEffect(() => {
-    if (user) {
-      const userRef = doc(db, "users", user.uid);
-      const unsub = onSnapshot(userRef, (doc) => {
-        if (doc.exists()) {
-          setIsPublicProfile(doc.data().isPublic || false);
-        }
-      });
-      return () => unsub();
-    }
-  }, [user]);
 
   const [title, setTitle] = useState("");
   const [items, setItems] = useState(
