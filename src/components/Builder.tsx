@@ -341,10 +341,7 @@ function Builder({
           </button>
           <button
             onClick={() => saveWheel(true)}
-            disabled={!isPublicProfile}
-            className={`px-3 py-2 rounded-xl bg-indigo-600 text-white ${
-              !isPublicProfile ? "opacity-50 cursor-not-allowed" : ""
-            }`}
+            className="px-3 py-2 rounded-xl bg-indigo-600 text-white"
           >
             Save public
           </button>
