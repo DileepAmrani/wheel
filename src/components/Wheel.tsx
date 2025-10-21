@@ -258,7 +258,9 @@ function Wheel({
             fill="#0f172a"
             fontSize={Math.max(10, 16 - (items[idx]?.length || 0) / 3)}
           >
-            {items[idx] || ""}
+            {(items[idx] && items[idx].length > 20) 
+              ? `${items[idx].substring(0, 20)}...` 
+              : (items[idx] || "")}
           </text>
         ))}
       </svg>

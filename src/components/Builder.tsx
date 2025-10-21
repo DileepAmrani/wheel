@@ -3,7 +3,7 @@ import { load, save } from "../utils";
 import Wheel from "./Wheel";
 import ShareModal from "./ShareModal";
 import AuthModal from "./AuthModal";
-import { PRESET_ITEMS, PRESETS } from "@/constants/presets";
+import { PRESET_ITEMS, PRESETS, type PresetKey } from "@/constants/presets";
 import { type User } from "firebase/auth";
 import { doc, onSnapshot, collection, addDoc } from "firebase/firestore";
 import { db } from "@/firebase";
@@ -19,6 +19,11 @@ function Builder({
   user: User | null;
 }) {
   const [isPublicProfile, setIsPublicProfile] = useState(false);
+  const [nameType, setNameType] = useState<"boys" | "girls" | "unisex">("boys");
+  const [presetKey, setPresetKey] = useState<PresetKey>("names");
+  const [currentItems, setCurrentItems] = useState<string>("");
+  // Only show name type selector when the names preset is selected
+  const shouldShowNameType = presetKey === "names";
 
   useEffect(() => {
     if (user) {
@@ -31,6 +36,7 @@ function Builder({
       return () => unsub();
     }
   }, [user]);
+
   const [title, setTitle] = useState("");
   const [items, setItems] = useState(
     load("qw_items", [
@@ -101,6 +107,7 @@ function Builder({
     const all = Object.values(PRESET_ITEMS).flat();
     return Array.from(new Set(all.map(String)));
   }, []);
+
   const reserved = () =>
     new Set(
       items
@@ -108,6 +115,7 @@ function Builder({
         .map((v: string) => v.trim())
         .filter(Boolean)
     );
+    
   const regenerateOthers = () => {
     const keep = reserved();
     const pick = () => {
@@ -181,6 +189,24 @@ function Builder({
     setWinner(w);
   };
 
+  
+  function getRandomPresetItems(key: PresetKey, count = 16): string[] {
+    const preset = PRESET_ITEMS[key];
+
+    if (!preset || !Array.isArray(preset)) return [];
+
+    // Flatten if nested arrays (like names: [[], []])
+    const allItems = Array.isArray(preset[0])
+      ? (preset as string[][]).flat()
+      : (preset as string[]);
+
+    // Shuffle and pick random items
+    return allItems
+      .slice() // clone to avoid mutating
+      .sort(() => Math.random() - 0.5)
+      .slice(0, count);
+  }
+
   return (
     <div className="grid lg:grid-cols-2 gap-8 items-stretch" id="builder">
       {/* left card */}
@@ -198,14 +224,19 @@ function Builder({
           {PRESETS.map((p) => (
             <button
               key={p.key}
-              onClick={() => setItems(PRESET_ITEMS[p.key].slice(0, 16))}
+              onClick={() => {
+                setItems(PRESET_ITEMS[p.key].flat().slice(0, 16));
+                setCurrentItems(p.key);
+              }}
               className="px-3 py-1 rounded-full bg-white border text-sm hover:bg-slate-50"
             >
               {p.emoji} {p.label}
             </button>
           ))}
+
         </div>
-        <div className="flex-1 overflow-y-auto pr-1">
+
+        <div className="flex-1 overflow-y-auto pr-1 mb-3">
           <div className="grid sm:grid-cols-2 gap-3">
             {items.map((v: string, i: number) => (
               <div key={i} className="flex items-center gap-2 min-w-0">
@@ -238,6 +269,57 @@ function Builder({
             ))}
           </div>
         </div>
+
+
+          {currentItems === "names" && (
+            <div className="mt-3 flex flex-wrap items-center gap-4 mb-3 p-2 bg-slate-50 rounded-lg">
+              <div className="text-sm font-medium">Name Type:</div>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="nameType"
+                    checked={nameType === "boys"}
+                    onChange={() => {
+                      setNameType("boys");
+                      setItems(getRandomPresetItems("names", 16));
+                    }}
+                    className="accent-indigo-600"
+                  />
+                  <span>Boys</span>
+                </label>
+
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="nameType"
+                    checked={nameType === "girls"}
+                    onChange={() => {
+                      setNameType("girls");
+                      setItems(getRandomPresetItems("names", 16));
+                    }}
+                    className="accent-indigo-600"
+                  />
+                  <span>Girls</span>
+                </label>
+
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="nameType"
+                    checked={nameType === "unisex"}
+                    onChange={() => {
+                      setNameType("unisex");
+                      setItems(getRandomPresetItems("names", 16));
+                    }}
+                    className="accent-indigo-600"
+                  />
+                  <span>Unisex</span>
+                </label>
+              </div>
+            </div>
+          )}
+
         <div className="mt-3 flex flex-wrap gap-2">
           <button onClick={addItem} className="px-3 py-2 rounded-xl border">
             Add item
@@ -294,7 +376,6 @@ function Builder({
           onSpin={(w) => {
             onSpinEnd(w);
           }}
-      
           showConfetti={showConfetti}
           setShowConfetti={setShowConfetti}
         />
