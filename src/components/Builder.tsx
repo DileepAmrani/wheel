@@ -20,10 +20,7 @@ function Builder({
 }) {
   const [isPublicProfile, setIsPublicProfile] = useState(false);
   const [nameType, setNameType] = useState<"boys" | "girls" | "unisex">("boys");
-  const [presetKey, setPresetKey] = useState<PresetKey>("names");
   const [currentItems, setCurrentItems] = useState<string>("");
-  // Only show name type selector when the names preset is selected
-  const shouldShowNameType = presetKey === "names";
 
   useEffect(() => {
     if (user) {

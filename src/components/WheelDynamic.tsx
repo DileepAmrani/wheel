@@ -25,6 +25,7 @@ function Wheel({
   const tickSound = useRef<HTMLAudioElement | null>(null);
   const winSound = useRef<HTMLAudioElement | null>(null);
   const [muted, setMuted] = useState(false);
+  const [winningName, setWinningName] = useState<string | null>(null);
 
   // Refs to clear timers safely
   const tickIntervalRef = useRef<number | null>(null);
@@ -107,17 +108,42 @@ function Wheel({
     }
   };
 
-  // Auto-trigger spin when controlled externally
   useEffect(() => {
-    if (spinning && !localSpin) {
-      spin(winner);
+    // Guard: only spin when Firestore says "spinning" and local spin isn't active
+    // AND we don't already have a winner (so winner updates won't re-trigger)
+    if (spinning && !localSpin && !winner) {
+      console.log("[WHEEL] External spin triggered by Firestore.");
+      spin(null);
+    } else if (!spinning && localSpin) {
+      // When Firestore resets, ensure we stop any ongoing animation
+      console.log("[WHEEL] Firestore stopped spin → stopping animation.");
+      setLocalSpin(false);
     }
-  }, [spinning, winner, localSpin]); // include localSpin to avoid stale closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spinning]); // include localSpin to avoid stale closure
 
   // If winner is set externally, stop tick sounds immediately
   useEffect(() => {
-    if (winner !== null) {
+    if (winner) {
+      console.log(`[WHEEL] Firestore announced winner: ${winner}`);
       stopTickSounds();
+      setLocalSpin(false);
+      setShowConfetti(true);
+      setWinningName(winner);
+
+       // 🛑 Stop the spin visually at the winning segment
+    const normalizedWinner = winner.trim().toLowerCase();
+    const index = items.findIndex(
+      (i) => i.trim().toLowerCase() === normalizedWinner
+    );
+
+    if (index >= 0) {
+      const stopAngle = (360 - (index * step + step / 2)) % 360;
+      setAngle(stopAngle); // Instantly rotate to winner
+    }
+
+    // Auto-hide winning name
+    setTimeout(() => setWinningName(null), 2500);
     }
   }, [winner]);
 
@@ -125,6 +151,7 @@ function Wheel({
     if (localSpin || items.length === 0) return;
     setLocalSpin(true);
     setShowConfetti(false);
+    setWinningName(null);
 
     // Normalize winner
     const normalizedWinner = forcedWinner?.trim().toLowerCase();
@@ -194,6 +221,8 @@ function Wheel({
         });
       }
       setShowConfetti(true);
+      setWinningName(selected);
+      setTimeout(() => setWinningName(null), 2000);
     }, spinDuration);
   };
 
@@ -254,9 +283,9 @@ function Wheel({
             fill="#0f172a"
             fontSize={Math.max(10, 16 - (items[idx]?.length || 0) / 3)}
           >
-            {(items[idx] && items[idx].length > 20) 
-              ? `${items[idx].substring(0, 20)}...` 
-              : (items[idx] || "")}
+            {items[idx] && items[idx].length > 20
+              ? `${items[idx].substring(0, 20)}...`
+              : items[idx] || ""}
           </text>
         ))}
       </svg>
@@ -282,11 +311,11 @@ function Wheel({
       </button>
 
       {/* Winning name popup */}
-      {/* {winningName && (
+      {winningName && (
         <div className="absolute bottom-24 bg-amber-400 text-black font-bold text-lg px-4 py-2 rounded-full shadow-lg animate-bounce">
           🎉 {winningName} 🎉
         </div>
-      )} */}
+      )}
     </div>
   );
 }

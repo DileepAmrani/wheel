@@ -1,9 +1,14 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import {
+  doc,
+  onSnapshot,
+  runTransaction,
+  updateDoc,
+} from "firebase/firestore";
 import { auth, db } from "@/firebase";
 import { type User } from "firebase/auth";
-import Wheel from "@/components/Wheel";
+import Wheel from "@/components/WheelDynamic";
 import Confetti from "react-confetti";
 import { toast } from "react-hot-toast";
 
@@ -24,7 +29,7 @@ interface PublicWheel {
     winner: string | null;
     timestamp: number;
   };
-  initiatedBy?: string; // Email of the user who initiated the spin
+  initiatedBy?: string; // UID of the user who initiated the spin
 }
 
 const WheelPage = ({ user }: { user: User | null }) => {
@@ -32,13 +37,16 @@ const WheelPage = ({ user }: { user: User | null }) => {
   const [wheel, setWheel] = useState<PublicWheel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [winner, setWinner] = useState("");
   const [showConfetti, setShowConfetti] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
   const [canEdit, setCanEdit] = useState(false);
   const [localSpinning, setLocalSpinning] = useState(false);
-  console.log(canEdit);
-  const spinTriggeredRef = useRef(false); // prevent re-triggering animation on same snapshot
+
+  const spinTriggeredRef = useRef(false); // Prevent re-triggering animation
+  const lastWinnerTimestampRef = useRef<number>(0); // Track latest winner timestamp
+  // NOTE: Keep for debugging, remove when done
+  console.log("Current user can edit:", canEdit);
+  const listenerInitializedRef = useRef(false);
 
   // Track window size for confetti
   useEffect(() => {
@@ -51,136 +59,201 @@ const WheelPage = ({ user }: { user: User | null }) => {
 
   // Clear confetti when component unmounts and handle auto-hide
   useEffect(() => {
-    // Auto-hide confetti after 8 seconds
     let confettiTimer: number | null = null;
-
     if (showConfetti) {
       confettiTimer = window.setTimeout(() => {
         setShowConfetti(false);
       }, 8000);
     }
-
     return () => {
-      // Clear timer and confetti on unmount
-      if (confettiTimer) {
-        clearTimeout(confettiTimer);
-      }
+      if (confettiTimer) clearTimeout(confettiTimer);
       setShowConfetti(false);
     };
   }, [showConfetti]);
 
-  // ✅ Live listener for wheel updates
   useEffect(() => {
-    if (!wheelId) return;
-
+    if (!wheelId || listenerInitializedRef.current) return;
+    console.log("🔁 [INIT] Setting up Firestore snapshot listener...");
+    listenerInitializedRef.current = true;
     const wheelRef = doc(db, "wheels", wheelId);
 
-    const unsubscribe = onSnapshot(wheelRef, async (snap) => {
-      if (!snap.exists()) {
-        setError("Wheel not found.");
+    const unsubscribe = onSnapshot(
+      wheelRef,
+      (snap) => {
+        if (!snap.exists()) {
+          console.warn("❌ [SNAPSHOT] Wheel not found in Firestore.");
+          setError("Wheel not found.");
+          setLoading(false);
+          return;
+        }
+
+        const data = snap.data() as PublicWheel;
+        const userEmail = user?.email;
+        const participants = data.participants || [];
+        const participant = participants.find((p) => p.email === userEmail);
+
+        /** 🧭 Access control check **/
+        const hasAccess =
+          data.isPublic || (user && data.owner === user.uid) || !!participant;
+
+        if (!hasAccess) {
+          console.warn("🚫 [ACCESS] No permission to view this wheel.");
+          setError("You do not have permission to view this wheel.");
+          setLoading(false);
+          return;
+        }
+
+        /** 🛠️ Determine edit permission **/
+        const canEditValue =
+          user && (data.owner === user.uid || participant?.role === "editor");
+        setCanEdit(!!canEditValue);
+
+        /** 🧩 Clean data and update state **/
+        const { id: _, ...wheelDataWithoutId } = data;
+        setWheel({ id: snap.id, ...wheelDataWithoutId });
+
+        const logMsg = [
+          `[SNAPSHOT] isSpinning: ${data.isSpinning}`,
+          `InitiatedBy: ${data.initiatedBy ?? "none"}`,
+          `Winner: ${data.currentSpin?.winner ?? "none"}`,
+          `spinTriggeredRef: ${spinTriggeredRef.current}`,
+        ].join(" | ");
+        console.log(logMsg);
+
+        /** 🔄 Sync spin animation across clients **/
+        if (data.isSpinning && !spinTriggeredRef.current) {
+          console.log(
+            "🌀 [SYNC] Spin started in Firestore → starting local animation."
+          );
+          spinTriggeredRef.current = true;
+          setLocalSpinning(true);
+        } else if (!data.isSpinning && spinTriggeredRef.current) {
+          console.log(
+            "✅ [SYNC] Spin stopped in Firestore → stopping local animation."
+          );
+          spinTriggeredRef.current = false;
+          setLocalSpinning(false);
+        }
+
+        /** 🏁 Winner logic **/
+        const newWinner = data.currentSpin?.winner || "";
+        const newTimestamp = data.currentSpin?.timestamp || 0;
+        const lastTimestamp = lastWinnerTimestampRef.current;
+
+        // Case: New winner found
+        if (newWinner && newTimestamp > lastTimestamp) {
+          console.log(
+            `🎉 [SNAPSHOT] New winner detected: ${newWinner} (ts: ${newTimestamp})`
+          );
+          setShowConfetti(true);
+          lastWinnerTimestampRef.current = newTimestamp;
+        }
+        // Case: Winner cleared (new spin started)
+        else if (!newWinner && lastTimestamp > 0) {
+          console.log(
+            "🧹 [SNAPSHOT] Winner cleared — resetting confetti/winner state."
+          );
+          setShowConfetti(false);
+          lastWinnerTimestampRef.current = 0;
+        }
+        // Case: same or stale data
+        else {
+          console.log(
+            `🕓 [SNAPSHOT IGNORED] No new winner. Current: ${newWinner} (ts: ${newTimestamp}), last: ${lastTimestamp}`
+          );
+        }
+
         setLoading(false);
-        return;
-      }
-
-      const data = snap.data() as PublicWheel;
-      const userEmail = user?.email;
-      const participants = data.participants || [];
-      const participant = participants.find((p) => p.email === userEmail);
-
-      const hasAccess =
-        data.isPublic || (user && data.owner === user.uid) || !!participant;
-
-      if (!hasAccess) {
-        setError("You do not have permission to view this wheel.");
+      },
+      (err) => {
+        console.error("🔥 [SNAPSHOT ERROR]", err);
+        setError("Failed to load wheel data.");
         setLoading(false);
-        return;
       }
+    );
 
-      const canEditValue =
-        user && (data.owner === user.uid || participant?.role === "editor");
-      setCanEdit(!!canEditValue);
-
-      // Update wheel state
-      // Extract data without id, then add the id from snap to avoid duplicate
-      const { id: _, ...wheelDataWithoutId } = data;
-      setWheel({ id: snap.id, ...wheelDataWithoutId });
-
-      // 🔄 Handle real-time spin sync
-      if (data.isSpinning && !spinTriggeredRef.current) {
-        // start local animation
-        spinTriggeredRef.current = true;
-        setLocalSpinning(true);
-      }
-
-      if (!data.isSpinning) {
-        spinTriggeredRef.current = false;
-        setLocalSpinning(false);
-      }
-
-      // 🎉 Handle winner reveal
-      if (data.currentSpin?.winner) {
-        setWinner(data.currentSpin.winner);
-        setShowConfetti(true);
-      } else {
-        setWinner("");
-        setShowConfetti(false);
-      }
-
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    return () => {
+      console.log("🧹 [CLEANUP] Unsubscribing from Firestore listener.");
+      unsubscribe();
+      listenerInitializedRef.current = false;
+    };
   }, [wheelId, user]);
 
   // Handle spin start (only host/editor)
   const handleSpinStart = async () => {
-    if (!wheelId) {
-      toast.error("Wheel not found.");
-      return;
-    }
-    if (!user?.email) {
-      toast.error("Unable to identify user. Please sign in again.");
+    if (!wheelId || !auth.currentUser?.uid) {
+      toast.error("Error: Wheel or user not identified.");
       return;
     }
 
+    const wheelRef = doc(db, "wheels", wheelId);
+
+    console.log(`[ACTION] User ${auth.currentUser.uid} initiating spin.`);
     try {
-      const wheelRef = doc(db, "wheels", wheelId);
-      await updateDoc(wheelRef, {
-        isSpinning: true,
-        initiatedBy: auth.currentUser?.uid, // Store who initiated the spin
-        currentSpin: {
-          winner: null,
-          timestamp: Date.now(),
-        },
+      await runTransaction(db, async (transaction) => {
+        const wheelDoc = await transaction.get(wheelRef);
+        if (!wheelDoc.exists()) throw new Error("Wheel not found");
+        if (wheelDoc.data().isSpinning) throw new Error("Already spinning!");
+
+        transaction.update(wheelRef, {
+          isSpinning: true,
+          initiatedBy: auth.currentUser?.uid,
+          currentSpin: {
+            winner: null,
+            timestamp: Date.now(),
+          },
+        });
       });
+
+      console.log(`[ACTION] Spin started by ${auth.currentUser.uid}`);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to start spin.");
+      toast.error((err as Error)?.message || "Failed to start spin.");
     }
   };
 
-  // 🏁 When spin animation completes → update winner
+  const spinCompleteLockRef = useRef(false);
+
   const handleSpinComplete = async (result: string) => {
-    if (!wheelId) return;
+    if (spinCompleteLockRef.current) {
+      console.log("[COMPLETE] Duplicate call ignored.");
+      return;
+    }
+    spinCompleteLockRef.current = true;
 
-    try {
-      const wheelRef = doc(db, "wheels", wheelId);
+    if (!wheelId || !wheel || !auth.currentUser?.uid) {
+      console.log("[COMPLETE] Missing wheelId, wheel, or user. Aborting.");
+      return;
+    }
 
-      // Preserve the initiatedBy field from the current spin
-      const initiatedBy = wheel?.initiatedBy;
-      if (initiatedBy === auth.currentUser?.uid) {
+    console.log(
+      `[COMPLETE] Local animation finished. Winner is ${result}. Current DB Initiator: ${wheel.initiatedBy}. Local User: ${auth.currentUser?.uid}`
+    );
+
+    if (wheel.initiatedBy === auth.currentUser.uid) {
+      try {
+        const wheelRef = doc(db, "wheels", wheelId);
         await updateDoc(wheelRef, {
           isSpinning: false,
-          initiatedBy: initiatedBy, // Preserve who initiated the spin
+          initiatedBy: null,
           currentSpin: {
             winner: result,
             timestamp: Date.now(),
           },
         });
+        console.log("[COMPLETE] Database updated with winner:", result);
+      } catch (err) {
+        console.error("Error updating spin:", err);
+        toast.error("Failed to update winner.");
       }
-    } catch (err) {
-      console.error("Error updating spin:", err);
+    } else {
+      console.log("[COMPLETE] Not initiator, ignoring local update.");
     }
+
+    // Reset the lock after a short delay to allow next spin
+    setTimeout(() => {
+      spinCompleteLockRef.current = false;
+    }, 2000);
   };
 
   // Copy link
@@ -237,14 +310,14 @@ const WheelPage = ({ user }: { user: User | null }) => {
           initiatedBy={wheel?.initiatedBy}
         />
 
-        {winner && (
+        {/* {winner && (
           <div className="mt-3 text-center">
             <div className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
               Winner!
             </div>
             <div className="mt-1 font-bold">{winner}</div>
           </div>
-        )}
+        )} */}
       </div>
 
       {showConfetti && (
