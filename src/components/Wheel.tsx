@@ -1,4 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { auth } from "@/firebase";
+import { toast } from "react-hot-toast";
+import AuthModal from "./AuthModal";
 
 interface WheelProps {
   items: string[];
@@ -9,6 +12,7 @@ interface WheelProps {
   showConfetti?: boolean;
   setShowConfetti?: (show: boolean) => void;
   initiatedBy?: string;
+  requireAuth?: boolean;
 }
 
 function Wheel({
@@ -18,40 +22,27 @@ function Wheel({
   spinning = false,
   winner = null,
   setShowConfetti = () => {},
+  requireAuth = true,
 }: WheelProps) {
   const [angle, setAngle] = useState(0);
   const [localSpin, setLocalSpin] = useState(false);
   const [size] = useState(420);
   const tickSound = useRef<HTMLAudioElement | null>(null);
   const winSound = useRef<HTMLAudioElement | null>(null);
-  const [muted, setMuted] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [muted, setMuted] = useState(() => {
+    try {
+      const saved = localStorage.getItem("wheelSoundMuted");
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
 
   // Refs to clear timers safely
   const tickIntervalRef = useRef<number | null>(null);
   const spinTimeoutRef = useRef<number | null>(null);
-
-  // Track every cloned tick so we can stop them immediately
   const tickClonesRef = useRef<HTMLAudioElement[]>([]);
-
-  // Initialize audio elements
-  useEffect(() => {
-    tickSound.current = new Audio("/spin.mp3");
-    winSound.current = new Audio("/win.mp3");
-    tickSound.current.volume = 0.5;
-    winSound.current.volume = 0.5;
-
-    return () => {
-      // cleanup on unmount
-      stopTickSounds();
-      try {
-        winSound.current?.pause();
-        winSound.current = null;
-      } catch {
-        winSound.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const r = size / 2;
   const n = Math.max(items.length, 1);
@@ -75,6 +66,21 @@ function Wheel({
     return out;
   }, [n, size, cx, cy, r]);
 
+  // Save mute state to localStorage and update audio elements
+  useEffect(() => {
+    try {
+      localStorage.setItem("wheelSoundMuted", JSON.stringify(muted));
+      if (tickSound.current) {
+        tickSound.current.muted = muted;
+      }
+      if (winSound.current) {
+        winSound.current.muted = muted;
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [muted]);
+
   // Helper to stop all ticking audio (base + clones) and clear interval
   const stopTickSounds = () => {
     if (tickIntervalRef.current) {
@@ -82,24 +88,22 @@ function Wheel({
       tickIntervalRef.current = null;
     }
 
-    // Pause/reset base tick
     try {
       if (tickSound.current) {
         tickSound.current.pause();
         tickSound.current.currentTime = 0;
       }
     } catch {
-      // ignore
+      // Ignore
     }
 
-    // Pause & reset any clone currently playing and clear the list
     try {
       tickClonesRef.current.forEach((c) => {
         try {
           c.pause();
           c.currentTime = 0;
         } catch {
-          /* ignore */
+          // Ignore
         }
       });
     } finally {
@@ -112,7 +116,7 @@ function Wheel({
     if (spinning && !localSpin) {
       spin(winner);
     }
-  }, [spinning, winner, localSpin]); // include localSpin to avoid stale closure
+  }, [spinning, winner, localSpin]);
 
   // If winner is set externally, stop tick sounds immediately
   useEffect(() => {
@@ -122,9 +126,16 @@ function Wheel({
   }, [winner]);
 
   const spin = (forcedWinner: string | null) => {
+    if (requireAuth && !auth.currentUser) {
+      toast.error("Please log in to spin the wheel.");
+      setAuthModalOpen(true);
+      return;
+    }
+
     if (localSpin || items.length === 0) return;
     setLocalSpin(true);
     setShowConfetti(false);
+    onStartSpin?.();
 
     // Normalize winner
     const normalizedWinner = forcedWinner?.trim().toLowerCase();
@@ -143,55 +154,37 @@ function Wheel({
 
     setAngle(end);
 
-    // Ensure no previous tick interval or clones are left
     stopTickSounds();
 
-    // Start ticking clones if not muted
-    if (!muted && tickSound.current) {
-      tickIntervalRef.current = window.setInterval(() => {
-        // clone a new audio element for overlap
-        const t = tickSound.current!.cloneNode(true) as HTMLAudioElement;
-        t.volume = 0.3;
-        // keep a reference so we can stop it later
-        tickClonesRef.current.push(t);
-
-        // Remove clone from list when it finishes (or errors)
-        const cleanup = () => {
-          const idx = tickClonesRef.current.indexOf(t);
-          if (idx >= 0) tickClonesRef.current.splice(idx, 1);
-          t.removeEventListener("ended", cleanup);
-          t.removeEventListener("error", cleanup);
-        };
-        t.addEventListener("ended", cleanup);
-        t.addEventListener("error", cleanup);
-
-        t.play().catch(() => {
-          // If play fails (autoplay restrictions), remove from list so it can't be leaked
-          cleanup();
-          // console.error("tick play failed", err);
-        });
-      }, 120);
+    // Play tick sound if not muted
+    if (tickSound.current) {
+      tickSound.current.play().catch((error) => {
+        console.error("Error playing tick sound:", error);
+      });
+      if (!muted) {
+        tickSound.current.muted = false;
+      }
     }
 
     const spinDuration = 4200;
-    // Clear any existing timeout first
     if (spinTimeoutRef.current) {
       clearTimeout(spinTimeoutRef.current);
       spinTimeoutRef.current = null;
     }
 
     spinTimeoutRef.current = window.setTimeout(() => {
-      // Stop any ticking audio (interval + clones + base)
       stopTickSounds();
-
       setLocalSpin(false);
       const selected = items[pick];
       onSpin(selected);
 
-      if (!muted && winSound.current) {
-        winSound.current.play().catch(() => {
-          /* ignore */
+      if (winSound.current) {
+        winSound.current.play().catch((error) => {
+          console.error("Error playing win sound:", error);
         });
+        if (!muted) {
+          winSound.current.muted = false;
+        }
       }
       setShowConfetti(true);
     }, spinDuration);
@@ -206,8 +199,12 @@ function Wheel({
         spinTimeoutRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Toggle mute/unmute
+  const toggleMute = () => {
+    setMuted((prev: boolean) => !prev);
+  };
 
   return (
     <div
@@ -218,6 +215,10 @@ function Wheel({
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
         <div className="w-0 h-0 border-l-8 border-r-8 border-b-[18px] border-l-transparent border-r-transparent border-b-rose-500" />
       </div>
+
+      {/* Hidden audio elements */}
+      <audio ref={tickSound} src="/spin.mp3" className="hidden-audio" />
+      <audio ref={winSound} src="/win.mp3" className="hidden-audio" />
 
       {/* Wheel */}
       <svg
@@ -254,9 +255,9 @@ function Wheel({
             fill="#0f172a"
             fontSize={Math.max(10, 16 - (items[idx]?.length || 0) / 3)}
           >
-            {(items[idx] && items[idx].length > 20) 
-              ? `${items[idx].substring(0, 20)}...` 
-              : (items[idx] || "")}
+            {items[idx] && items[idx].length > 20
+              ? `${items[idx].substring(0, 20)}...`
+              : items[idx] || ""}
           </text>
         ))}
       </svg>
@@ -264,8 +265,12 @@ function Wheel({
       {/* Spin button */}
       <button
         onClick={() => {
+          if (requireAuth && !auth.currentUser) {
+            toast.error("Please log in to spin the wheel.");
+            return;
+          }
           if (onStartSpin) onStartSpin();
-          else spin(null); // Local mode
+          else spin(null);
         }}
         disabled={localSpin}
         className="absolute inset-0 m-auto bottom-0 w-12 h-12 md:w-20 md:h-20 rounded-full text-xs md:text-base bg-slate-900 text-white font-medium md:font-extrabold ring-2 md:ring-4 ring-amber-400 shadow flex items-center justify-center"
@@ -274,19 +279,24 @@ function Wheel({
       </button>
 
       {/* Mute toggle */}
+      {/* Mute toggle */}
       <button
-        onClick={() => setMuted(!muted)}
+        onClick={toggleMute}
         className="absolute bottom-4 right-4 bg-gray-800 text-white text-xs px-3 py-1 rounded-full opacity-80 hover:opacity-100"
       >
         {muted ? "Unmute" : "Mute"}
       </button>
-
-      {/* Winning name popup */}
-      {/* {winningName && (
-        <div className="absolute bottom-24 bg-amber-400 text-black font-bold text-lg px-4 py-2 rounded-full shadow-lg animate-bounce">
-          🎉 {winningName} 🎉
-        </div>
-      )} */}
+      
+      {authModalOpen && (
+        <AuthModal
+          onClose={() => setAuthModalOpen(false)}
+          onSuccess={() => {
+            const fn = window.__afterAuth;
+            window.__afterAuth = undefined;
+            if (fn) fn();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import Dashboard from "./pages/dashboard";
 import AuthModal from "./components/AuthModal";
 import { Toaster } from 'react-hot-toast';
 import WheelPage from "./pages/wheel";
+import AdminPage from "./pages/admin";
 
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -52,6 +53,7 @@ const App = () => {
         <Route path="/" element={<Home user={user} />} />
         <Route path="/dashboard" element={<Dashboard user={user} />} />
         <Route path="/wheel/:wheelId" element={<WheelPage user={user} />} />
+        <Route path="/admin" element={<AdminPage user={user} />} />
       </Routes>
       <Toaster position="top-center" reverseOrder={false} />
     </>

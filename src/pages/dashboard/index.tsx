@@ -94,7 +94,12 @@ const Dashboard = ({ user }: { user: User | null }) => {
       <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
 
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <h2 className="text-xl font-semibold mb-2">Profile Settings</h2>
+        <div className="px-4 py-3 bg-gray-50 rounded-xl mb-2">
+          <p className="text-sm font-medium text-gray-900">
+            {user.displayName || "User"}
+          </p>
+          <p className="text-xs text-gray-500 break-all mt-1">{user.email}</p>
+        </div>
         <div className="flex items-center">
           <label className="relative inline-flex items-center cursor-pointer">
             <input
@@ -144,10 +149,7 @@ const Dashboard = ({ user }: { user: User | null }) => {
           <div className="space-y-4">
             {sharedWheels.length > 0 ? (
               sharedWheels.map((wheel) => (
-                <WheelCard
-                  key={wheel.id}
-                  wheel={wheel}
-                />
+                <WheelCard key={wheel.id} wheel={wheel} />
               ))
             ) : (
               <div className="bg-white p-6 rounded-2xl shadow-sm text-center">

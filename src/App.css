@@ -1,0 +1,39 @@
+.sound-component {
+  display: flex;
+  gap: 15px;
+  padding: 20px;
+  align-items: center;
+}
+
+.hidden-audio {
+  display: none !important; /* Completely hidden */
+}
+
+.run-btn, .mute-btn {
+  padding: 12px 24px;
+  font-size: 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.run-btn {
+  background: #10b981;
+  color: white;
+}
+
+.run-btn:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.mute-btn {
+  background: #f59e0b;
+  color: white;
+}
+
+.mute-btn:hover {
+  background: #d97706;
+  transform: translateY(-1px);
+}

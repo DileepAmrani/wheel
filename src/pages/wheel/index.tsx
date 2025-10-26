@@ -11,6 +11,7 @@ import { type User } from "firebase/auth";
 import Wheel from "@/components/WheelDynamic";
 import Confetti from "react-confetti";
 import { toast } from "react-hot-toast";
+import AuthModal from "@/components/AuthModal";
 
 interface Participant {
   email: string;
@@ -41,6 +42,7 @@ const WheelPage = ({ user }: { user: User | null }) => {
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
   const [canEdit, setCanEdit] = useState(false);
   const [localSpinning, setLocalSpinning] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const spinTriggeredRef = useRef(false); // Prevent re-triggering animation
   const lastWinnerTimestampRef = useRef<number>(0); // Track latest winner timestamp
@@ -72,7 +74,15 @@ const WheelPage = ({ user }: { user: User | null }) => {
   }, [showConfetti]);
 
   useEffect(() => {
-    if (!wheelId || listenerInitializedRef.current) return;
+    if (!wheelId) return;
+    
+    // Reset loading state when user changes (e.g., after login)
+    setLoading(true);
+    setError(null);
+    
+    // Reset listener flag to allow re-initialization
+    listenerInitializedRef.current = false;
+    
     console.log("🔁 [INIT] Setting up Firestore snapshot listener...");
     listenerInitializedRef.current = true;
     const wheelRef = doc(db, "wheels", wheelId);
@@ -176,6 +186,9 @@ const WheelPage = ({ user }: { user: User | null }) => {
       console.log("🧹 [CLEANUP] Unsubscribing from Firestore listener.");
       unsubscribe();
       listenerInitializedRef.current = false;
+      // Reset refs when cleaning up
+      spinTriggeredRef.current = false;
+      lastWinnerTimestampRef.current = 0;
     };
   }, [wheelId, user]);
 
@@ -261,6 +274,43 @@ const WheelPage = ({ user }: { user: User | null }) => {
     navigator.clipboard.writeText(window.location.href);
     toast.success("Link copied to clipboard!");
   };
+
+  // Show authentication prompt if user is not logged in
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-rose-50 via-white to-rose-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto p-8 bg-white rounded-2xl shadow-lg text-center">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 flex items-center justify-center">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Required</h2>
+            <p className="text-slate-600">
+              Please log in or sign up to access this wheel.
+            </p>
+          </div>
+          <button
+            onClick={() => setAuthModalOpen(true)}
+            className="w-full px-6 py-3 bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
+          >
+            Log In / Sign Up
+          </button>
+        </div>
+        
+        {authModalOpen && (
+          <AuthModal
+            onClose={() => setAuthModalOpen(false)}
+            onSuccess={() => {
+              setAuthModalOpen(false);
+              // The component will re-render with the authenticated user
+            }}
+          />
+        )}
+      </div>
+    );
+  }
 
   if (loading) {
     return (

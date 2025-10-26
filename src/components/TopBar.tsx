@@ -76,16 +76,16 @@ function TopBar({ user, onLogin }: TopBarProps) {
         {/* Desktop Navigation */}
         <div className="hidden sm:flex items-center gap-6 text-base font-medium text-slate-700">
           <nav className="flex gap-6">
-            <a href="#builder" className="hover:text-indigo-600">
+            <a href="/#builder" className="hover:text-indigo-600">
               Create
             </a>
-            <a href="#popular" className="hover:text-indigo-600">
+            <a href="/#popular" className="hover:text-indigo-600">
               Popular
             </a>
-            <a href="#blog" className="hover:text-indigo-600">
+            <a href="/#blog" className="hover:text-indigo-600">
               Blog
             </a>
-            <a href="#faq" className="hover:text-indigo-600">
+            <a href="/#faq" className="hover:text-indigo-600">
               Q&A
             </a>
           </nav>
@@ -94,7 +94,7 @@ function TopBar({ user, onLogin }: TopBarProps) {
           {user ? (
             <div className="flex items-center gap-3">
               <Link to="/dashboard" className="px-3 py-1 rounded-full bg-slate-900 text-white text-sm font-semibold shadow hover:bg-slate-700">
-                {user.displayName || user.email?.split("@")[0] || "Account"}
+                Dashboard
               </Link>
               <button
                 onClick={handleSignOut}
@@ -140,28 +140,28 @@ function TopBar({ user, onLogin }: TopBarProps) {
               
               <nav className="flex flex-col gap-4 text-lg font-medium text-slate-700">
                 <a 
-                  href="#builder" 
+                  href="/#builder" 
                   className="px-3 py-2 rounded-lg hover:bg-slate-100"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Create
                 </a>
                 <a 
-                  href="#popular" 
+                  href="/#popular" 
                   className="px-3 py-2 rounded-lg hover:bg-slate-100"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Popular
                 </a>
                 <a 
-                  href="#blog" 
+                  href="/#blog" 
                   className="px-3 py-2 rounded-lg hover:bg-slate-100"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Blog
                 </a>
                 <a 
-                  href="#faq" 
+                  href="/#faq" 
                   className="px-3 py-2 rounded-lg hover:bg-slate-100"
                   onClick={() => setMobileMenuOpen(false)}
                 >
@@ -172,12 +172,20 @@ function TopBar({ user, onLogin }: TopBarProps) {
               <div className="mt-8 border-t pt-6">
                 {user ? (
                   <div className="space-y-3">
+                    <div className="px-4 py-3 bg-gray-50 rounded-xl">
+                      <p className="text-sm font-medium text-gray-900">
+                        {user.displayName || "User"}
+                      </p>
+                      <p className="text-xs text-gray-500 break-all mt-1">
+                        {user.email}
+                      </p>
+                    </div>
                     <Link 
                       to="/dashboard" 
                       className="block w-full px-4 py-2 text-center rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800"
                       onClick={() => setMobileMenuOpen(false)}
                     >
-                      {user.displayName || user.email?.split("@")[0] || "Account"}
+                      Dashboard
                     </Link>
                     <button
                       onClick={handleSignOut}
