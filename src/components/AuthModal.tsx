@@ -6,13 +6,14 @@ import {
   type User,
   sendEmailVerification,
   signOut,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase";
 import SpinnerIcon from "./SpinnerIcon";
 
-// Define the two possible modes for the modal
-type AuthMode = "signIn" | "signUp";
+// Define the three possible modes for the modal
+type AuthMode = "signIn" | "signUp" | "forgotPassword";
 
 interface AuthModalProps {
   onClose: () => void;
@@ -28,7 +29,8 @@ function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   const [error, setError] = useState<string | null>(null);
 
   const isSignUp = mode === "signUp";
-  const buttonText = isSignUp ? "Sign Up" : "Sign In";
+  const isForgotPassword = mode === "forgotPassword";
+  const buttonText = isSignUp ? "Sign Up" : isForgotPassword ? "Reset Password" : "Sign In";
 
   // Custom Tailwind classes for the active tab
   const activeTabClass = "bg-indigo-600 text-white font-semibold";
@@ -38,7 +40,36 @@ function AuthModal({ onClose, onSuccess }: AuthModalProps) {
     setBusy(true);
     setError(null);
 
-    // Basic validation (remains the same)
+    // Validation for forgot password mode
+    if (isForgotPassword) {
+      if (!email) {
+        setError("Please enter your email address.");
+        setBusy(false);
+        return;
+      }
+
+      try {
+        await sendPasswordResetEmail(auth, email);
+        setError("Password reset email sent! Please check your inbox.");
+        // Switch back to sign in mode after successful reset email
+        setTimeout(() => {
+          setMode("signIn");
+          setError(null);
+        }, 3000);
+        setBusy(false);
+        return;
+      } catch (resetError: any) {
+        let errorMessage = "Failed to send password reset email.";
+        if (resetError.code === "auth/user-not-found") {
+          errorMessage = "No account found with this email address.";
+        }
+        setError(errorMessage);
+        setBusy(false);
+        return;
+      }
+    }
+
+    // Basic validation for sign in/up modes
     if (!email || password.length < 6) {
       setError(
         "Please enter a valid email and a password of at least 6 characters."
@@ -47,7 +78,7 @@ function AuthModal({ onClose, onSuccess }: AuthModalProps) {
       return;
     }
 
-    // Additional validation for Sign Up mode (remains the same)
+    // Additional validation for Sign Up mode
     if (isSignUp && !name) {
       setError("Please enter a username for your new account.");
       setBusy(false);
@@ -182,30 +213,44 @@ function AuthModal({ onClose, onSuccess }: AuthModalProps) {
         </div>
 
         {/* --- Tab Switcher --- */}
-        <div className="flex mb-4 p-1 rounded-xl border bg-gray-100">
-          <button
-            onClick={() => {
-              setMode("signIn");
-              setError(null);
-            }}
-            className={`w-1/2 py-2 rounded-lg transition-colors ${
-              !isSignUp ? activeTabClass : inactiveTabClass
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            onClick={() => {
-              setMode("signUp");
-              setError(null);
-            }}
-            className={`w-1/2 py-2 rounded-lg transition-colors ${
-              isSignUp ? activeTabClass : inactiveTabClass
-            }`}
-          >
-            Sign Up
-          </button>
-        </div>
+        {!isForgotPassword ? (
+          <div className="flex mb-4 p-1 rounded-xl border bg-gray-100">
+            <button
+              onClick={() => {
+                setMode("signIn");
+                setError(null);
+              }}
+              className={`w-1/2 py-2 rounded-lg transition-colors ${
+                mode === "signIn" ? activeTabClass : inactiveTabClass
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => {
+                setMode("signUp");
+                setError(null);
+              }}
+              className={`w-1/2 py-2 rounded-lg transition-colors ${
+                isSignUp ? activeTabClass : inactiveTabClass
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+        ) : (
+          <div className="mb-4">
+            <button
+              onClick={() => {
+                setMode("signIn");
+                setError(null);
+              }}
+              className="text-indigo-600 hover:text-indigo-800 text-sm"
+            >
+              ← Back to Sign In
+            </button>
+          </div>
+        )}
         {/* --- End Tab Switcher --- */}
 
         <div className="space-y-3">
@@ -216,13 +261,17 @@ function AuthModal({ onClose, onSuccess }: AuthModalProps) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <input
-            className="w-full px-3 py-2 border rounded-xl"
-            placeholder="Password (min. 6 characters)"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          
+          {/* Password input - hidden in forgot password mode */}
+          {!isForgotPassword && (
+            <input
+              className="w-full px-3 py-2 border rounded-xl"
+              placeholder="Password (min. 6 characters)"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          )}
 
           {/* Username Input only visible in Sign Up mode */}
           {isSignUp && (
@@ -234,7 +283,21 @@ function AuthModal({ onClose, onSuccess }: AuthModalProps) {
             />
           )}
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {/* Forgot password description */}
+          {isForgotPassword && (
+            <p className="text-gray-600 text-sm">
+              Enter your email address and we'll send you a link to reset your password.
+            </p>
+          )}
+
+          {error && (
+            <p className={`text-sm ${
+              error.includes("Password reset email sent") ? "text-green-600" : "text-red-500"
+            }`}>
+              {error}
+            </p>
+          )}
+          
           <button
             onClick={handleAuth}
             disabled={busy}
@@ -242,6 +305,22 @@ function AuthModal({ onClose, onSuccess }: AuthModalProps) {
           >
             {busy && <SpinnerIcon />} {buttonText}
           </button>
+
+          {/* Forgot password link - only show in sign in mode */}
+          {mode === "signIn" && (
+            <div className="text-center">
+              <button
+                onClick={() => {
+                  setMode("forgotPassword");
+                  setError(null);
+                  setPassword(""); // Clear password when switching to forgot password
+                }}
+                className="text-indigo-600 hover:text-indigo-800 text-sm"
+              >
+                Forgot your password?
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

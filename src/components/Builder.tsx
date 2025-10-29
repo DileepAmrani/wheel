@@ -5,8 +5,14 @@ import ShareModal from "./ShareModal";
 import AuthModal from "./AuthModal";
 import { PRESET_ITEMS, PRESETS, type PresetKey } from "@/constants/presets";
 import { type User } from "firebase/auth";
-import { collection, addDoc } from "firebase/firestore";
-import { db } from "@/firebase";
+import {
+  collection,
+  addDoc,
+  doc,
+  updateDoc,
+  increment,
+} from "firebase/firestore";
+import { db, auth } from "@/firebase";
 import { toast } from "react-hot-toast";
 
 function Builder({
@@ -20,7 +26,6 @@ function Builder({
 }) {
   const [nameType, setNameType] = useState<"boys" | "girls" | "unisex">("boys");
   const [currentItems, setCurrentItems] = useState<string>("");
-
 
   const [title, setTitle] = useState("");
   const [items, setItems] = useState(
@@ -100,7 +105,7 @@ function Builder({
         .map((v: string) => v.trim())
         .filter(Boolean)
     );
-    
+
   const regenerateOthers = () => {
     const keep = reserved();
     const pick = () => {
@@ -170,11 +175,43 @@ function Builder({
     }
   };
 
-  const onSpinEnd = (w: string) => {
-    setWinner(w);
+  const saveAnonymousWheel = async () => {
+    const wheelTitle = title.trim() || "Untitled Wheel";
+    const wheel = {
+      title: wheelTitle,
+      items: items.filter(Boolean), // Remove empty items
+      isPublic: true, // Anonymous wheels are always public
+      owner: "anonymous",
+      createdAt: new Date().toISOString(),
+      isAnonymous: true,
+    };
+    try {
+      const docRef = await addDoc(collection(db, "wheels"), wheel);
+      setWheelId(docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error("Error saving anonymous wheel: ", error);
+      toast.error("Failed to create shareable wheel.");
+      return null;
+    }
   };
 
-  
+  const onSpinEnd = async (w: string) => {
+    setWinner(w);
+    // Increment user's spin count if they are logged in
+    if (auth.currentUser) {
+      try {
+        const userRef = doc(db, "users", auth.currentUser.uid);
+        await updateDoc(userRef, {
+          spinsCount: increment(1),
+        });
+      } catch (error) {
+        console.error("Error updating spin count:", error);
+        // Don't show error to user as this is not critical to the wheel functionality
+      }
+    }
+  };
+
   function getRandomPresetItems(key: PresetKey, count = 16): string[] {
     const preset = PRESET_ITEMS[key];
 
@@ -210,7 +247,9 @@ function Builder({
             <button
               key={p.key}
               onClick={() => {
-                setItems(PRESET_ITEMS[p.key].flat().slice(0, 16));
+                const newItems = PRESET_ITEMS[p.key].flat().slice(0, 16);
+                setItems(newItems);
+                setLocks(newItems.map(() => false)); // Clear all locks for new wheel
                 setCurrentItems(p.key);
               }}
               className="px-3 py-1 rounded-full bg-white border text-sm hover:bg-slate-50"
@@ -218,7 +257,6 @@ function Builder({
               {p.emoji} {p.label}
             </button>
           ))}
-
         </div>
 
         <div className="flex-1 overflow-y-auto pr-1 mb-3">
@@ -255,55 +293,60 @@ function Builder({
           </div>
         </div>
 
+        {currentItems === "names" && (
+          <div className="mt-3 flex flex-wrap items-center gap-4 mb-3 p-2 bg-slate-50 rounded-lg">
+            <div className="text-sm font-medium">Name Type:</div>
+            <div className="flex gap-3">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="nameType"
+                  checked={nameType === "boys"}
+                  onChange={() => {
+                    setNameType("boys");
+                    const newItems = getRandomPresetItems("names", 16);
+                    setItems(newItems);
+                    setLocks(newItems.map(() => false)); // Clear all locks for new name type
+                  }}
+                  className="accent-indigo-600"
+                />
+                <span>Boys</span>
+              </label>
 
-          {currentItems === "names" && (
-            <div className="mt-3 flex flex-wrap items-center gap-4 mb-3 p-2 bg-slate-50 rounded-lg">
-              <div className="text-sm font-medium">Name Type:</div>
-              <div className="flex gap-3">
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="nameType"
-                    checked={nameType === "boys"}
-                    onChange={() => {
-                      setNameType("boys");
-                      setItems(getRandomPresetItems("names", 16));
-                    }}
-                    className="accent-indigo-600"
-                  />
-                  <span>Boys</span>
-                </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="nameType"
+                  checked={nameType === "girls"}
+                  onChange={() => {
+                    setNameType("girls");
+                    const newItems = getRandomPresetItems("names", 16);
+                    setItems(newItems);
+                    setLocks(newItems.map(() => false)); // Clear all locks for new name type
+                  }}
+                  className="accent-indigo-600"
+                />
+                <span>Girls</span>
+              </label>
 
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="nameType"
-                    checked={nameType === "girls"}
-                    onChange={() => {
-                      setNameType("girls");
-                      setItems(getRandomPresetItems("names", 16));
-                    }}
-                    className="accent-indigo-600"
-                  />
-                  <span>Girls</span>
-                </label>
-
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="nameType"
-                    checked={nameType === "unisex"}
-                    onChange={() => {
-                      setNameType("unisex");
-                      setItems(getRandomPresetItems("names", 16));
-                    }}
-                    className="accent-indigo-600"
-                  />
-                  <span>Unisex</span>
-                </label>
-              </div>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="nameType"
+                  checked={nameType === "unisex"}
+                  onChange={() => {
+                    setNameType("unisex");
+                    const newItems = getRandomPresetItems("names", 16);
+                    setItems(newItems);
+                    setLocks(newItems.map(() => false)); // Clear all locks for new name type
+                  }}
+                  className="accent-indigo-600"
+                />
+                <span>Unisex</span>
+              </label>
             </div>
-          )}
+          </div>
+        )}
 
         <div className="mt-3 flex flex-wrap gap-2">
           <button onClick={addItem} className="px-3 py-2 rounded-xl border">
@@ -321,6 +364,8 @@ function Builder({
           >
             Regenerate others
           </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={() => saveWheel(false)}
             className="px-3 py-2 rounded-xl border"
@@ -334,11 +379,14 @@ function Builder({
             Save public
           </button>
           <button
-            onClick={() => {
-              if (!wheelId) {
-                toast.error("Please save the wheel before sharing.");
-                return;
-              }
+            onClick={async () => {
+              // if (!wheelId) {
+              //   toast.error("Please save the wheel before sharing.");
+              //   return;
+              // }
+              // Create anonymous wheel for sharing
+              const anonymousWheelId = await saveAnonymousWheel();
+              if (!anonymousWheelId) return;
               setShareOpen(true);
             }}
             className="px-3 py-2 rounded-xl border"

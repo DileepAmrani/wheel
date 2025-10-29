@@ -19,6 +19,7 @@ function ShareModal({ wheelId, onClose }: ShareModalProps) {
   const [newParticipantRole, setNewParticipantRole] =
     useState<"viewer" | "editor">("viewer");
   const [copied, setCopied] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   const url = `${window.location.origin}/wheel/${wheelId}`;
   const btn =
@@ -29,7 +30,9 @@ function ShareModal({ wheelId, onClose }: ShareModalProps) {
       const wheelRef = doc(db, "wheels", wheelId);
       const wheelSnap = await getDoc(wheelRef);
       if (wheelSnap.exists()) {
-        setParticipants(wheelSnap.data().participants || []);
+        const wheelData = wheelSnap.data();
+        setParticipants(wheelData.participants || []);
+        setIsAnonymous(wheelData.isAnonymous || false);
       }
     };
     fetchParticipants();
@@ -84,67 +87,80 @@ function ShareModal({ wheelId, onClose }: ShareModalProps) {
           </button>
         </div>
 
-        {/* Add people */}
+        {/* Add people - only show for authenticated wheels */}
         <div className="space-y-4">
-          <div>
-            <h4 className="font-semibold text-slate-700 mb-2 text-lg">
-              Add people
-            </h4>
-            <div className="flex flex-col md:flex-row gap-3">
-              <input
-                type="email"
-                value={newParticipantEmail}
-                onChange={(e) => setNewParticipantEmail(e.target.value)}
-                placeholder="person@example.com"
-                className="flex-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-indigo-400"
-              />
-              <select
-                value={newParticipantRole}
-                onChange={(e) =>
-                  setNewParticipantRole(e.target.value as "viewer" | "editor")
-                }
-                className="px-3 py-2.5 border rounded-xl"
-              >
-                <option value="viewer">Can view</option>
-                <option value="editor">Can edit</option>
-              </select>
-              <button
-                onClick={addParticipant}
-                className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-
-          {/* Current participants */}
-          <div>
-            <h4 className="font-semibold text-slate-700 mb-2 text-lg">
-              People with access
-            </h4>
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-              {participants.length === 0 && (
-                <p className="text-slate-500 text-sm">No participants yet.</p>
-              )}
-              {participants.map((p) => (
-                <div
-                  key={p.email}
-                  className="flex items-center justify-between border rounded-lg p-2.5"
-                >
-                  <span className="font-medium text-slate-800">{p.email}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-slate-500">{p.role}</span>
-                    <button
-                      onClick={() => removeParticipant(p.email)}
-                      className="text-red-500 hover:underline text-sm"
-                    >
-                      Remove
-                    </button>
-                  </div>
+          {!isAnonymous && (
+            <>
+              <div>
+                <h4 className="font-semibold text-slate-700 mb-2 text-lg">
+                  Add people
+                </h4>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <input
+                    type="email"
+                    value={newParticipantEmail}
+                    onChange={(e) => setNewParticipantEmail(e.target.value)}
+                    placeholder="person@example.com"
+                    className="flex-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <select
+                    value={newParticipantRole}
+                    onChange={(e) =>
+                      setNewParticipantRole(e.target.value as "viewer" | "editor")
+                    }
+                    className="px-3 py-2.5 border rounded-xl"
+                  >
+                    <option value="viewer">Can view</option>
+                    <option value="editor">Can edit</option>
+                  </select>
+                  <button
+                    onClick={addParticipant}
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
+                  >
+                    Add
+                  </button>
                 </div>
-              ))}
+              </div>
+
+              {/* Current participants */}
+              <div>
+                <h4 className="font-semibold text-slate-700 mb-2 text-lg">
+                  People with access
+                </h4>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                  {participants.length === 0 && (
+                    <p className="text-slate-500 text-sm">No participants yet.</p>
+                  )}
+                  {participants.map((p) => (
+                    <div
+                      key={p.email}
+                      className="flex items-center justify-between border rounded-lg p-2.5"
+                    >
+                      <span className="font-medium text-slate-800">{p.email}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-slate-500">{p.role}</span>
+                        <button
+                          onClick={() => removeParticipant(p.email)}
+                          className="text-red-500 hover:underline text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          
+          {isAnonymous && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <p className="text-blue-800 text-sm">
+                <strong>📌 Quick Share:</strong> This wheel can be viewed by anyone with the link. 
+                To manage permissions and add specific people, please save the wheel to your account first.
+              </p>
             </div>
-          </div>
+          )}
 
           {/* Share links */}
           <div>
@@ -187,12 +203,21 @@ function ShareModal({ wheelId, onClose }: ShareModalProps) {
 
         {/* Footer */}
         <div className="mt-8 flex justify-end">
-          <button
-            onClick={saveParticipants}
-            className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
-          >
-            Save & Close
-          </button>
+          {!isAnonymous ? (
+            <button
+              onClick={saveParticipants}
+              className="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
+            >
+              Save & Close
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              className="px-6 py-3 rounded-xl bg-slate-600 text-white font-semibold hover:bg-slate-700"
+            >
+              Close
+            </button>
+          )}
         </div>
       </div>
     </div>

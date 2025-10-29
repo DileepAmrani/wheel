@@ -1,6 +1,4 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { auth } from "@/firebase";
-import { toast } from "react-hot-toast";
 import AuthModal from "./AuthModal";
 
 interface WheelProps {
@@ -22,7 +20,6 @@ function Wheel({
   spinning = false,
   winner = null,
   setShowConfetti = () => {},
-  requireAuth = true,
 }: WheelProps) {
   const [angle, setAngle] = useState(0);
   const [localSpin, setLocalSpin] = useState(false);
@@ -126,11 +123,11 @@ function Wheel({
   }, [winner]);
 
   const spin = (forcedWinner: string | null) => {
-    if (requireAuth && !auth.currentUser) {
-      toast.error("Please log in to spin the wheel.");
-      setAuthModalOpen(true);
-      return;
-    }
+    // if (requireAuth && !auth.currentUser) {
+    //   toast.error("Please log in to spin the wheel.");
+    //   setAuthModalOpen(true);
+    //   return;
+    // }
 
     if (localSpin || items.length === 0) return;
     setLocalSpin(true);
@@ -265,10 +262,10 @@ function Wheel({
       {/* Spin button */}
       <button
         onClick={() => {
-          if (requireAuth && !auth.currentUser) {
-            toast.error("Please log in to spin the wheel.");
-            return;
-          }
+          // if (requireAuth && !auth.currentUser) {
+          //   toast.error("Please log in to spin the wheel.");
+          //   return;
+          // }
           if (onStartSpin) onStartSpin();
           else spin(null);
         }}

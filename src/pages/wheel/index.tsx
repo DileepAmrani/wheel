@@ -1,11 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import {
-  doc,
-  onSnapshot,
-  runTransaction,
-  updateDoc,
-} from "firebase/firestore";
+import { doc, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase";
 import { type User } from "firebase/auth";
 import Wheel from "@/components/WheelDynamic";
@@ -75,14 +70,14 @@ const WheelPage = ({ user }: { user: User | null }) => {
 
   useEffect(() => {
     if (!wheelId) return;
-    
+
     // Reset loading state when user changes (e.g., after login)
     setLoading(true);
     setError(null);
-    
+
     // Reset listener flag to allow re-initialization
     listenerInitializedRef.current = false;
-    
+
     console.log("🔁 [INIT] Setting up Firestore snapshot listener...");
     listenerInitializedRef.current = true;
     const wheelRef = doc(db, "wheels", wheelId);
@@ -103,6 +98,15 @@ const WheelPage = ({ user }: { user: User | null }) => {
         const participant = participants.find((p) => p.email === userEmail);
 
         /** 🧭 Access control check **/
+        // For private wheels, require authentication
+        if (!data.isPublic && !user) {
+          console.warn("🔒 [ACCESS] Private wheel requires authentication.");
+          setError("This is a private wheel. Please log in to access it.");
+          setLoading(false);
+          setAuthModalOpen(true);
+          return;
+        }
+
         const hasAccess =
           data.isPublic || (user && data.owner === user.uid) || !!participant;
 
@@ -192,13 +196,30 @@ const WheelPage = ({ user }: { user: User | null }) => {
     };
   }, [wheelId, user]);
 
-  // Handle spin start (only host/editor)
+  // Handle spin start (authenticated users and anonymous users)
   const handleSpinStart = async () => {
-    if (!wheelId || !auth.currentUser?.uid) {
-      toast.error("Error: Wheel or user not identified.");
+    if (!wheelId) {
+      toast.error("Error: Wheel not identified.");
       return;
     }
 
+    // For private wheels, require authentication
+    if (wheel && !wheel.isPublic && !auth.currentUser?.uid) {
+      toast.error("Please log in to spin this private wheel.");
+      setAuthModalOpen(true);
+      return;
+    }
+
+    // If user is not logged in but wheel is public, spin locally
+    if (!auth.currentUser?.uid) {
+      console.log("[ACTION] Anonymous user spinning public wheel locally");
+      setLocalSpinning(true);
+      return;
+    }
+
+    // For logged-in users, sync with Firebase
+
+    
     const wheelRef = doc(db, "wheels", wheelId);
 
     console.log(`[ACTION] User ${auth.currentUser.uid} initiating spin.`);
@@ -234,8 +255,20 @@ const WheelPage = ({ user }: { user: User | null }) => {
     }
     spinCompleteLockRef.current = true;
 
-    if (!wheelId || !wheel || !auth.currentUser?.uid) {
-      console.log("[COMPLETE] Missing wheelId, wheel, or user. Aborting.");
+    // If user is not logged in (anonymous), handle local completion
+    if (!auth.currentUser?.uid) {
+      console.log("[COMPLETE] Anonymous user - local spin completed:", result);
+      setLocalSpinning(false);
+      setShowConfetti(true);
+      setTimeout(() => {
+        spinCompleteLockRef.current = false;
+      }, 2000);
+      return;
+    }
+
+    // For logged-in users, sync with Firebase
+    if (!wheelId || !wheel) {
+      console.log("[COMPLETE] Missing wheelId or wheel. Aborting.");
       return;
     }
 
@@ -275,42 +308,43 @@ const WheelPage = ({ user }: { user: User | null }) => {
     toast.success("Link copied to clipboard!");
   };
 
-  // Show authentication prompt if user is not logged in
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-rose-50 via-white to-rose-50 flex items-center justify-center">
-        <div className="max-w-md mx-auto p-8 bg-white rounded-2xl shadow-lg text-center">
-          <div className="mb-6">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 flex items-center justify-center">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Required</h2>
-            <p className="text-slate-600">
-              Please log in or sign up to access this wheel.
-            </p>
-          </div>
-          <button
-            onClick={() => setAuthModalOpen(true)}
-            className="w-full px-6 py-3 bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
-          >
-            Log In / Sign Up
-          </button>
-        </div>
-        
-        {authModalOpen && (
-          <AuthModal
-            onClose={() => setAuthModalOpen(false)}
-            onSuccess={() => {
-              setAuthModalOpen(false);
-              // The component will re-render with the authenticated user
-            }}
-          />
-        )}
-      </div>
-    );
-  }
+  // Show authentication modal when needed
+  // Authentication is now handled inline for private wheels
+  // if (!user) {
+  //   return (
+  //     <div className="min-h-screen bg-gradient-to-b from-rose-50 via-white to-rose-50 flex items-center justify-center">
+  //       <div className="max-w-md mx-auto p-8 bg-white rounded-2xl shadow-lg text-center">
+  //         <div className="mb-6">
+  //           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 flex items-center justify-center">
+  //             <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  //               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+  //             </svg>
+  //           </div>
+  //           <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Required</h2>
+  //           <p className="text-slate-600">
+  //             Please log in or sign up to access this wheel.
+  //           </p>
+  //         </div>
+  //         <button
+  //           onClick={() => setAuthModalOpen(true)}
+  //           className="w-full px-6 py-3 bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
+  //         >
+  //           Log In / Sign Up
+  //         </button>
+  //       </div>
+
+  //       {authModalOpen && (
+  //         <AuthModal
+  //           onClose={() => setAuthModalOpen(false)}
+  //           onSuccess={() => {
+  //             setAuthModalOpen(false);
+  //             // The component will re-render with the authenticated user
+  //           }}
+  //         />
+  //       )}
+  //     </div>
+  //   );
+  // }
 
   if (loading) {
     return (
